@@ -17,7 +17,6 @@ namespace ConsoleProxy
         public const string LogName = "Log.txt";
         public const string LogTradeName = "LogTrade.txt";
         public const string UnitDataName = "15m.json";
-        public const string TickDataName = "TickData.txt";
 
         public const String TestTag = Program.isTest == true?"Test":"";
     
@@ -58,11 +57,6 @@ namespace ConsoleProxy
         public static string getUnitDataPath(string instrument)
         {
             return buildFilePath(instrument + "_" + UnitDataName);
-        }
-
-        public static string getTickDataPath(string instrument)
-        {
-            return buildFilePath("_" + instrument + "_" + TickDataName);
         }
 
         public static string getLogTradeFilePath()
