@@ -1,18 +1,14 @@
 ﻿using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading;
 using System.Threading;
 
 namespace Quote2015
 {
-	///深度行情
-	[StructLayout(LayoutKind.Sequential)]
+    ///深度行情
+    [StructLayout(LayoutKind.Sequential)]
 	public class MarketData : IComparable
 	{
 		/// <summary>

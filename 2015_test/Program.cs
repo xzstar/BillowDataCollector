@@ -25,29 +25,30 @@ namespace ConsoleProxy
         public double low { get; set; }
         public double open { get; set; }
         public double close { get; set; }
+        public double avg_480 { get; set; }
     }
 
-    [Serializable]
-    public class InstrumentData
-    {
-        //public LinkedList<UnitData> unitDataList;
-        public string lastUpdateTime = null;
-        public int holder = 0;
-        public bool isToday = true;
-        public double price = -1;
-        public double curAvg = 0;
-        public InstrumentData()
-        {
-            //unitDataList = new LinkedList<UnitData>();
-        }
-    }
+    //[Serializable]
+    //public class InstrumentData
+    //{
+    //    //public LinkedList<UnitData> unitDataList;
+    //    public string lastUpdateTime = null;
+    //    public int holder = 0;
+    //    public bool isToday = true;
+    //    public double price = -1;
+    //    public double curAvg = 0;
+    //    public InstrumentData()
+    //    {
+    //        //unitDataList = new LinkedList<UnitData>();
+    //    }
+    //}
 
     public class InstrumentTradeConfig
     {
         public string instrument;
-        public bool trade;
-        public int volumn;
-        public int span;
+        public bool trade;   //not used 
+        public int volumn;   //not used 
+        public int span;     //not used 
     }
 
 
@@ -68,10 +69,10 @@ namespace ConsoleProxy
         private Dictionary<string, InstrumentTradeConfig> _instrumentMap = new Dictionary<string, InstrumentTradeConfig>();
         //private Dictionary<int, OrderField> _tradeOrders = new Dictionary<int, OrderField>();
         //private HashSet<int> _removingOrders = new HashSet<int>();
-        private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
+        //private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
         //private Dictionary<string, HashSet<string>> _waitingForOp = new Dictionary<string, HashSet<string>>();
-        private Dictionary<string, LinkedList<UnitData>> unitDataMap = new Dictionary<string, LinkedList<UnitData>>();
-
+        private Dictionary<string, List<UnitData>> unitDataMap = new Dictionary<string, List<UnitData>>();
+        private Dictionary<string, string> lastUpdateTimeMap = new Dictionary<string, string>();
 
         /// <summary>
         /// 数据库连接
@@ -102,27 +103,27 @@ namespace ConsoleProxy
             }
         }
 
-        public void checkStatusOneMin()
-        {
-            if(Utils.isSyncPositionTime())
-            {
-                //Console.WriteLine(Program.LogTitle + "更新持仓");
-                //Console.WriteLine(trader.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
-                //       + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
-                //trader.ReqQryPosition();
+        //public void checkStatusOneMin()
+        //{
+        //    if(Utils.isSyncPositionTime())
+        //    {
+        //        //Console.WriteLine(Program.LogTitle + "更新持仓");
+        //        //Console.WriteLine(trader.DicPositionField.Aggregate("\r\n持仓", (cur, n) => cur + "\r\n"
+        //        //       + n.Value.GetType().GetFields().Aggregate(string.Empty, (f, v) => f + string.Format("{0,12}", v.GetValue(n.Value)))));
+        //        //trader.ReqQryPosition();
 
-                foreach(InstrumentData data in tradeData.Values)
-                {
-                    data.isToday = false;
-                }
-            }
-        }
+        //        foreach(InstrumentData data in tradeData.Values)
+        //        {
+        //            data.isToday = false;
+        //        }
+        //    }
+        //}
         
         private void saveAll()
         {
             foreach (string key in unitDataMap.Keys)
             {
-                LinkedList<UnitData> unitDataList;
+                List<UnitData> unitDataList;
                 if (unitDataMap.TryGetValue(key, out unitDataList))
                 {
                     if (unitDataList == null)
@@ -218,13 +219,13 @@ namespace ConsoleProxy
         private bool isNewBar(string lastUpdateTime, DateTime dt, string instrument)
         {
             DateTime lastUpdateDT = DateTime.Parse(lastUpdateTime);
-            if (lastUpdateTime == null || (lastUpdateDT.Minute != dt.Minute && isOpenMin(dt)))
+            if (lastUpdateTime == null || ((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isOpenMin(dt)))
                 return true;
 
 
             TimeSpan span = dt - lastUpdateDT;
 
-            if((lastUpdateDT.Minute != dt.Minute && isStartMin(dt, instrument)) || span.TotalMinutes > _MIN_INTERVAL)
+            if(((lastUpdateDT.Hour != dt.Hour || lastUpdateDT.Minute != dt.Minute) && isStartMin(dt, instrument)) || span.TotalMinutes > _MIN_INTERVAL)
                 return true;
             return false;
         }
@@ -237,6 +238,7 @@ namespace ConsoleProxy
             dict.Add("close", data.close);
             dict.Add("high", data.high);
             dict.Add("low", data.low);
+            dict.Add("avg_480",data.avg_480);
             MongoDbHepler.Update(mongoDB, instrument + instrument_15m, query, dict);
 
         }
@@ -244,6 +246,38 @@ namespace ConsoleProxy
         private void save(string instrument, UnitData data)
         {
             MongoDbHepler.Insert<UnitData>(mongoDB, instrument + instrument_15m, data);
+        }
+
+        private void initUnitDataMap(string instrument)
+        {
+            List<UnitData> unitDataList = MongoDbHepler.GetAll<UnitData>(mongoDB, instrument + instrument_15m);
+            unitDataMap.Add(instrument, unitDataList);
+            int count = unitDataList.Count;
+            if (count > _TOTALSIZE)
+            {
+                UnitData lastUnitData = unitDataList.Last();
+                if (lastUnitData.avg_480 <= 0)
+                {
+                    if (count > _TOTALSIZE)
+                    {
+                        double total = 0;
+                        for (int i = 0; i < _TOTALSIZE; i++)
+                        {
+                            total += unitDataList.ElementAt(count - i).close;
+                        }
+                        lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
+                    }
+                }
+                Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count,lastUnitData.avg_480));
+
+                //UnitData[] unitDataArray = unitData.ToArray();
+                //double allColse = 0;
+                //for (int i = 0; i < _TOTALSIZE; i++)
+                //{
+                //    allColse += unitDataArray[unitData.Count - 1 - i].close;
+                //}
+                //Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", instrument, Math.Round(allColse / _TOTALSIZE, 2)), instrument);
+            }
         }
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
         private static void Main(string[] args)
@@ -359,20 +393,21 @@ namespace ConsoleProxy
                 lock (lockThis)
                 {
                     //bool needUpdate = false;
-                    
-                    InstrumentData currentInstrumentdata;
 
-                    if (program.tradeData.TryGetValue(e.Tick.InstrumentID, out currentInstrumentdata) == false)
-                    {
-                        currentInstrumentdata = new InstrumentData();
-                        program.tradeData.Add(e.Tick.InstrumentID, currentInstrumentdata);
-                    }
+                    //InstrumentData currentInstrumentdata;
 
-                    LinkedList<UnitData> unitDataList;
+                    //if (program.tradeData.TryGetValue(e.Tick.InstrumentID, out currentInstrumentdata) == false)
+                    //{
+                    //    currentInstrumentdata = new InstrumentData();
+                    //    program.tradeData.Add(e.Tick.InstrumentID, currentInstrumentdata);
+                    //}
+                   
+
+                    List<UnitData> unitDataList;
                     if (program.unitDataMap.TryGetValue(e.Tick.InstrumentID, out unitDataList) == false)
                         return;
 
-
+                    
                     //DateTime d1 = DateTime.Parse(program.quoter.TradingDay+" "+e.Tick.UpdateTime);
                     DateTime d1 = DateTime.ParseExact(program.quoter.TradingDay + " " + e.Tick.UpdateTime, "yyyyMMdd HH:mm:ss", CultureInfo.InvariantCulture);
                     if (Utils.isValidData(e.Tick.InstrumentID,d1,e.Tick.UpdateTime) == false)
@@ -384,18 +419,34 @@ namespace ConsoleProxy
                         return;
 
 
-
-                    if (program.isNewBar(currentInstrumentdata.lastUpdateTime,d1,e.Tick.InstrumentID))
+                    string lastUpdateTime;
+                    if (program.lastUpdateTimeMap.TryGetValue(e.Tick.InstrumentID, out lastUpdateTime) == false)
                     {
-                        if (unitDataList.Count > 0)
+                        lastUpdateTime = null;
+                    }
+
+                    if (lastUpdateTime!= null && program.isNewBar(lastUpdateTime,d1,e.Tick.InstrumentID))
+                    {
+                        int count = unitDataList.Count;
+                        if (count > 0)
                         {
                             UnitData lastUnitData = unitDataList.Last();
+
+                            if(count > _TOTALSIZE)
+                            {
+                                double total = 0;
+                                for(int i = 0; i< _TOTALSIZE; i++)
+                                {
+                                    total += unitDataList.ElementAt(count - i).close;
+                                }
+                                lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE,2);
+                            }
                             program.update(e.Tick.InstrumentID, lastUnitData);
                         }
                         UnitData unitData = new UnitData();
                         unitData.high = unitData.low = unitData.open = unitData.close = e.Tick.LastPrice;
                         unitData.datetime = d1.ToString();
-                        unitDataList.AddLast(unitData);
+                        unitDataList.Add(unitData);
 
                         Console.WriteLine(string.Format(Program.LogTitle + "new bar 品种{0} 时间:{1} 当前价格:{2}", e.Tick.InstrumentID,
                            e.Tick.UpdateTime, e.Tick.LastPrice));
@@ -419,9 +470,10 @@ namespace ConsoleProxy
                         unitData.close = e.Tick.LastPrice;
 
                     }
-                    
-                   currentInstrumentdata.lastUpdateTime = d1.ToString();
-                    
+                    program.lastUpdateTimeMap.Add(e.Tick.InstrumentID,d1.ToString());
+
+                    //currentInstrumentdata.lastUpdateTime = d1.ToString();
+
                 }
             };
             
@@ -444,24 +496,24 @@ namespace ConsoleProxy
             //string fileName = @"C:\work\Trade.dat";//文件名称与路径
             //if(isTest)
             //    fileName = @"C:\work\TestTrade.dat";//文件名称与路径
-            string fileName = FileUtil.getTradeFilePath();
-            Dictionary<string, InstrumentData> tempData = null;
-            try
-            {
-                string text = File.ReadAllText(fileName);
-                tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
-            }
-            catch (Exception e)
-            {
+            //string fileName = FileUtil.getTradeFilePath();
+            //Dictionary<string, InstrumentData> tempData = null;
+            //try
+            //{
+            //    string text = File.ReadAllText(fileName);
+            //    tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
+            //}
+            //catch (Exception e)
+            //{
 
-            }
+            //}
 
-            if (tempData != null)
-                program.tradeData = tempData;
+            //if (tempData != null)
+            //    program.tradeData = tempData;
 
-            
-            
-            fileName = FileUtil.getInstrumentFilePath();
+
+
+            string fileName = FileUtil.getInstrumentFilePath();
             List<InstrumentTradeConfig> instrumentList = null;
             try
             {
@@ -520,26 +572,27 @@ namespace ConsoleProxy
 
             foreach (string key in program._instrumentMap.Keys)
             {
-                string unitFileName = FileUtil.getUnitDataPath(key);
-                LinkedList<UnitData> unitData = new LinkedList<UnitData>();
-                if (File.Exists(unitFileName))
-                {
-                    string text = File.ReadAllText(unitFileName);
-                    unitData = JsonConvert.DeserializeObject<LinkedList<UnitData>>(text);
-                }
+                program.initUnitDataMap(key);
+                //string unitFileName = FileUtil.getUnitDataPath(key);
+                //LinkedList<UnitData> unitData = new LinkedList<UnitData>();
+                //if (File.Exists(unitFileName))
+                //{
+                //    string text = File.ReadAllText(unitFileName);
+                //    unitData = JsonConvert.DeserializeObject<LinkedList<UnitData>>(text);
+                //}
 
-                program.unitDataMap.Add(key, unitData);
-                if (unitData.Count > _TOTALSIZE)
-                {
-                    UnitData[] unitDataArray = unitData.ToArray();
-                    double allColse = 0;
-                    for (int i = 0; i < _TOTALSIZE; i++)
-                    {
-                        allColse += unitDataArray[unitData.Count - 1 - i].close;
-                    }
-                    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
-                    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
-                }
+                //program.unitDataMap.Add(key, unitData);
+                //if (unitData.Count > _TOTALSIZE)
+                //{
+                //    UnitData[] unitDataArray = unitData.ToArray();
+                //    double allColse = 0;
+                //    for (int i = 0; i < _TOTALSIZE; i++)
+                //    {
+                //        allColse += unitDataArray[unitData.Count - 1 - i].close;
+                //    }
+                //    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
+                //    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
+                //}
                 
 
             }
@@ -557,19 +610,20 @@ namespace ConsoleProxy
                     program.saveAll();
                     break;
                 case 't':
-                    foreach (string key in program.tradeData.Keys)
-                    {
-                        InstrumentData currentInstrumentdata;
-                        if (program.tradeData.TryGetValue(key, out currentInstrumentdata) == false)
-                        {
-                            if (currentInstrumentdata == null)
-                                continue;
-                            Log.log(string.Format("品种:{0} 值:{1}", key,currentInstrumentdata.curAvg));
+                    //foreach (string key in program.tradeData.Keys)
+                    //{
+                    //    InstrumentData currentInstrumentdata;
+                    //    if (program.tradeData.TryGetValue(key, out currentInstrumentdata) == false)
+                    //    {
+                    //        if (currentInstrumentdata == null)
+                    //            continue;
+                    //        Log.log(string.Format("品种:{0} 值:{1}", key,currentInstrumentdata.curAvg));
 
-                        }
+                    //    }
 
 
-                    }
+                    //}
+                    Console.WriteLine("To be continued");
                     break;
                 case 'q':
                     if(program.quoter.IsLogin)
@@ -609,7 +663,7 @@ namespace ConsoleProxy
         static void ExcuteOneMin(object obj)
         {
             Thread.CurrentThread.IsBackground = true;
-            _p.checkStatusOneMin();
+            //_p.checkStatusOneMin();
         }
 
 
