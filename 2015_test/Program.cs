@@ -263,20 +263,12 @@ namespace ConsoleProxy
                         double total = 0;
                         for (int i = 0; i < _TOTALSIZE; i++)
                         {
-                            total += unitDataList.ElementAt(count - i).close;
+                            total += unitDataList.ElementAt(count - i - 1).close;
                         }
                         lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE, 2);
                     }
                 }
                 Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 个数{1} 平均:{2}", instrument, count,lastUnitData.avg_480));
-
-                //UnitData[] unitDataArray = unitData.ToArray();
-                //double allColse = 0;
-                //for (int i = 0; i < _TOTALSIZE; i++)
-                //{
-                //    allColse += unitDataArray[unitData.Count - 1 - i].close;
-                //}
-                //Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", instrument, Math.Round(allColse / _TOTALSIZE, 2)), instrument);
             }
         }
         //输入：q1ctp /t1ctp /q2xspeed /t2speed
@@ -437,7 +429,7 @@ namespace ConsoleProxy
                                 double total = 0;
                                 for(int i = 0; i< _TOTALSIZE; i++)
                                 {
-                                    total += unitDataList.ElementAt(count - i).close;
+                                    total += unitDataList.ElementAt(count - i -1).close;
                                 }
                                 lastUnitData.avg_480 = Math.Round(total / _TOTALSIZE,2);
                             }
@@ -470,7 +462,7 @@ namespace ConsoleProxy
                         unitData.close = e.Tick.LastPrice;
 
                     }
-                    program.lastUpdateTimeMap.Add(e.Tick.InstrumentID,d1.ToString());
+                    program.lastUpdateTimeMap[e.Tick.InstrumentID] = d1.ToString();
 
                     //currentInstrumentdata.lastUpdateTime = d1.ToString();
 
@@ -574,11 +566,11 @@ namespace ConsoleProxy
             {
                 program.initUnitDataMap(key);
                 //string unitFileName = FileUtil.getUnitDataPath(key);
-                //LinkedList<UnitData> unitData = new LinkedList<UnitData>();
+                //List<UnitData> unitData = new List<UnitData>();
                 //if (File.Exists(unitFileName))
                 //{
                 //    string text = File.ReadAllText(unitFileName);
-                //    unitData = JsonConvert.DeserializeObject<LinkedList<UnitData>>(text);
+                //    unitData = JsonConvert.DeserializeObject<List<UnitData>>(text);
                 //}
 
                 //program.unitDataMap.Add(key, unitData);
@@ -593,7 +585,7 @@ namespace ConsoleProxy
                 //    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
                 //    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
                 //}
-                
+
 
             }
             if (program.quoter.IsLogin)
