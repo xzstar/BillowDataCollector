@@ -28,21 +28,6 @@ namespace ConsoleProxy
         public double avg_480 { get; set; }
     }
 
-    //[Serializable]
-    //public class InstrumentData
-    //{
-    //    //public LinkedList<UnitData> unitDataList;
-    //    public string lastUpdateTime = null;
-    //    public int holder = 0;
-    //    public bool isToday = true;
-    //    public double price = -1;
-    //    public double curAvg = 0;
-    //    public InstrumentData()
-    //    {
-    //        //unitDataList = new LinkedList<UnitData>();
-    //    }
-    //}
-
     public class InstrumentTradeConfig
     {
         public string instrument;
@@ -51,6 +36,20 @@ namespace ConsoleProxy
         public int span;     //not used 
     }
 
+    [Serializable]
+    public class InstrumentData //not used just for keep same way
+    {
+        public string lastUpdateTime = null;
+        public int holder = 0;
+        public bool isToday = true;
+        public double price = -1;
+        public double curAvg = 0;
+        public bool trade;
+        public int closevolumn;
+        public int openvolumn;
+        public int span;
+
+    }
 
     class Program
     {
@@ -65,8 +64,9 @@ namespace ConsoleProxy
         public const bool isTest = false;
         public static string LogTitle = isTest?"[测试]":"[正式]";
 
-        private List<InstrumentTradeConfig> _instrumentList = new List<InstrumentTradeConfig>();
-        private Dictionary<string, InstrumentTradeConfig> _instrumentMap = new Dictionary<string, InstrumentTradeConfig>();
+        //private List<InstrumentTradeConfig> _instrumentList = new List<InstrumentTradeConfig>();
+        //private Dictionary<string, InstrumentTradeConfig> _instrumentMap = new Dictionary<string, InstrumentTradeConfig>();
+        private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
         //private Dictionary<int, OrderField> _tradeOrders = new Dictionary<int, OrderField>();
         //private HashSet<int> _removingOrders = new HashSet<int>();
         //private Dictionary<string, InstrumentData> tradeData = new Dictionary<string, InstrumentData>();
@@ -92,13 +92,15 @@ namespace ConsoleProxy
         static String instrument_15m = "_15m";
 
         private MongoDatabase mongoDB;
+
+        private bool isInit = false;
+
         void subscribeInstruments()
         {
-            foreach (InstrumentTradeConfig inst in _instrumentList)
+            foreach (string instrument in tradeData.Keys)
             {
-                Console.WriteLine(Program.LogTitle + "品种:{0} 交易:{1} 仓位:{2}",inst.instrument,inst.trade?"YES":"NO",inst.volumn);
+                Console.WriteLine(Program.LogTitle + "品种:{0}",instrument);
 
-                string instrument = inst.instrument;
                 quoter.ReqSubscribeMarketData(instrument);
             }
         }
@@ -206,6 +208,7 @@ namespace ConsoleProxy
                 return false;
             else if ((instrument.StartsWith("rb") && dt.Hour == 23 && dt.Minute >= 0)
                 || (instrument.StartsWith("bu") && dt.Hour == 23 && dt.Minute >= 0)
+                || (instrument.StartsWith("ru") && dt.Hour == 23 && dt.Minute >= 0)
                 || (instrument.StartsWith("ag") && dt.Hour == 2 && dt.Minute >= 30)
                 || (instrument.StartsWith("al") && dt.Hour == 1 && dt.Minute >= 0))
                 return false;
@@ -246,6 +249,56 @@ namespace ConsoleProxy
         private void save(string instrument, UnitData data)
         {
             MongoDbHepler.Insert<UnitData>(mongoDB, instrument + instrument_15m, data);
+        }
+
+        private void syncData()
+        {
+            string fileName = FileUtil.getTradeFilePath();
+            Dictionary<string, InstrumentData> tempData = null;
+            try
+            {
+                string text = File.ReadAllText(fileName);
+                tempData = JsonConvert.DeserializeObject<Dictionary<string, InstrumentData>>(text);
+            }
+            catch (Exception e)
+            {
+
+            }
+
+            if (tempData != null && tempData.Count != 0)
+                tradeData = tempData;
+            else if (isInit == false) //第一次启动
+            {
+                string inst = string.Empty;
+                Console.WriteLine(Program.LogTitle + "请输入合约:");
+                inst = Console.ReadLine();
+                //program.quoter.ReqSubscribeMarketData(inst);
+                InstrumentData instrumentData = new InstrumentData();
+                instrumentData.holder = 0;
+                instrumentData.isToday = false;
+                instrumentData.lastUpdateTime = "";
+                instrumentData.price = 0;
+                instrumentData.span = 15;
+                instrumentData.trade = true;
+                instrumentData.openvolumn = 1;
+                instrumentData.closevolumn = 1;
+                instrumentData.curAvg = 0;
+                tradeData = new Dictionary<string, InstrumentData>();
+                tradeData.Add(inst, instrumentData);
+
+            }
+            
+            
+            unitDataMap.Clear();
+            mongoDB = MongoDbHepler.GetDatabase(connectionString, dbName);
+
+            foreach (string key in tradeData.Keys)
+            {
+                initUnitDataMap(key);
+            }
+            
+            if (quoter.IsLogin)
+                subscribeInstruments();
         }
 
         private void initUnitDataMap(string instrument)
@@ -505,92 +558,93 @@ namespace ConsoleProxy
 
 
 
-            string fileName = FileUtil.getInstrumentFilePath();
-            List<InstrumentTradeConfig> instrumentList = null;
-            try
-            {
-                string text = File.ReadAllText(fileName);
-                instrumentList = JsonConvert.DeserializeObject<List<InstrumentTradeConfig>>(text);
-            }
-            catch (Exception e)
-            {
-                try
-                {
-                    List<string> oldinstrumentList = null;
-                    string text = File.ReadAllText(fileName);
-                    oldinstrumentList = JsonConvert.DeserializeObject<List<string>>(text);
-                    instrumentList = new List<InstrumentTradeConfig>();
-                    foreach (string inst in oldinstrumentList)
-                    {
-                        InstrumentTradeConfig instrumentConfig = new InstrumentTradeConfig();
-                        instrumentConfig.instrument = inst;
-                        instrumentConfig.trade = true;
-                        instrumentConfig.volumn = 1;
-                        instrumentList.Add(instrumentConfig);
+            //string fileName = FileUtil.getInstrumentFilePath();
+            //List<InstrumentTradeConfig> instrumentList = null;
+            //try
+            //{
+            //    string text = File.ReadAllText(fileName);
+            //    instrumentList = JsonConvert.DeserializeObject<List<InstrumentTradeConfig>>(text);
+            //}
+            //catch (Exception e)
+            //{
+            //    try
+            //    {
+            //        List<string> oldinstrumentList = null;
+            //        string text = File.ReadAllText(fileName);
+            //        oldinstrumentList = JsonConvert.DeserializeObject<List<string>>(text);
+            //        instrumentList = new List<InstrumentTradeConfig>();
+            //        foreach (string inst in oldinstrumentList)
+            //        {
+            //            InstrumentTradeConfig instrumentConfig = new InstrumentTradeConfig();
+            //            instrumentConfig.instrument = inst;
+            //            instrumentConfig.trade = true;
+            //            instrumentConfig.volumn = 1;
+            //            instrumentList.Add(instrumentConfig);
                         
-                    }
-                    string jsonString = JsonConvert.SerializeObject(instrumentList);
-                    File.WriteAllText(fileName, jsonString, Encoding.UTF8);
-                }
-                catch (Exception e2)
-                {
-                }
-            }
+            //        }
+            //        string jsonString = JsonConvert.SerializeObject(instrumentList);
+            //        File.WriteAllText(fileName, jsonString, Encoding.UTF8);
+            //    }
+            //    catch (Exception e2)
+            //    {
+            //    }
+            //}
 
-            if (instrumentList == null || instrumentList.Count == 0)
-            {
-                string inst = string.Empty;
-                Console.WriteLine(Program.LogTitle + "请输入合约:");
-                inst = Console.ReadLine();
-                //program.quoter.ReqSubscribeMarketData(inst);
-                InstrumentTradeConfig instrumentConfig = new InstrumentTradeConfig();
-                instrumentConfig.instrument = inst;
-                instrumentConfig.trade = true;
-                instrumentConfig.volumn = 1;
-                program._instrumentList.Clear();
-                program._instrumentList.Add(instrumentConfig);
-                program._instrumentMap.Add(inst, instrumentConfig);
-            }
-            else
-            {
-                program._instrumentList.Clear();
-                program._instrumentList.AddRange(instrumentList);
-                foreach(InstrumentTradeConfig instrumentConfig in program._instrumentList)
-                {
-                    program._instrumentMap.Add(instrumentConfig.instrument, instrumentConfig);
-                }
+            //if (instrumentList == null || instrumentList.Count == 0)
+            //{
+            //    string inst = string.Empty;
+            //    Console.WriteLine(Program.LogTitle + "请输入合约:");
+            //    inst = Console.ReadLine();
+            //    //program.quoter.ReqSubscribeMarketData(inst);
+            //    InstrumentTradeConfig instrumentConfig = new InstrumentTradeConfig();
+            //    instrumentConfig.instrument = inst;
+            //    instrumentConfig.trade = true;
+            //    instrumentConfig.volumn = 1;
+            //    program._instrumentList.Clear();
+            //    program._instrumentList.Add(instrumentConfig);
+            //    program._instrumentMap.Add(inst, instrumentConfig);
+            //}
+            //else
+            //{
+            //    program._instrumentList.Clear();
+            //    program._instrumentList.AddRange(instrumentList);
+            //    foreach(InstrumentTradeConfig instrumentConfig in program._instrumentList)
+            //    {
+            //        program._instrumentMap.Add(instrumentConfig.instrument, instrumentConfig);
+            //    }
                 
-            }
+            //}
 
-            foreach (string key in program._instrumentMap.Keys)
-            {
-                program.initUnitDataMap(key);
-                //string unitFileName = FileUtil.getUnitDataPath(key);
-                //List<UnitData> unitData = new List<UnitData>();
-                //if (File.Exists(unitFileName))
-                //{
-                //    string text = File.ReadAllText(unitFileName);
-                //    unitData = JsonConvert.DeserializeObject<List<UnitData>>(text);
-                //}
+            //foreach (string key in program._instrumentMap.Keys)
+            //{
+            //    program.initUnitDataMap(key);
+            //    //string unitFileName = FileUtil.getUnitDataPath(key);
+            //    //List<UnitData> unitData = new List<UnitData>();
+            //    //if (File.Exists(unitFileName))
+            //    //{
+            //    //    string text = File.ReadAllText(unitFileName);
+            //    //    unitData = JsonConvert.DeserializeObject<List<UnitData>>(text);
+            //    //}
 
-                //program.unitDataMap.Add(key, unitData);
-                //if (unitData.Count > _TOTALSIZE)
-                //{
-                //    UnitData[] unitDataArray = unitData.ToArray();
-                //    double allColse = 0;
-                //    for (int i = 0; i < _TOTALSIZE; i++)
-                //    {
-                //        allColse += unitDataArray[unitData.Count - 1 - i].close;
-                //    }
-                //    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
-                //    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
-                //}
+            //    //program.unitDataMap.Add(key, unitData);
+            //    //if (unitData.Count > _TOTALSIZE)
+            //    //{
+            //    //    UnitData[] unitDataArray = unitData.ToArray();
+            //    //    double allColse = 0;
+            //    //    for (int i = 0; i < _TOTALSIZE; i++)
+            //    //    {
+            //    //        allColse += unitDataArray[unitData.Count - 1 - i].close;
+            //    //    }
+            //    //    Console.WriteLine(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE));
+            //    //    Log.log(string.Format(Program.LogTitle + "品种{0} 平均:{1}", key, allColse / _TOTALSIZE), key);
+            //    //}
 
 
-            }
-            if (program.quoter.IsLogin)
-                program.subscribeInstruments();
-
+            //}
+            //if (program.quoter.IsLogin)
+            //    program.subscribeInstruments();
+            program.syncData();
+            program.isInit = true;
         Inst:
             Console.WriteLine(Program.LogTitle + "q:退出 ");
             Console.WriteLine("s-立刻保存 t-当前值");
