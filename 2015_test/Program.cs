@@ -47,7 +47,7 @@ namespace ConsoleProxy
         public bool trade;
         public int closevolumn;
         public int openvolumn;
-        public int span;
+        public double span;
 
     }
 
